@@ -2,7 +2,6 @@ from matrx import WorldBuilder
 from matrx.actions.move_actions import *
 from matrx.agents import HumanAgentBrain
 
-
 def create_builder():
     # Create our builder, here we specify the world size and a nice background image
     builder = WorldBuilder(shape=[14, 13], run_matrx_api=True, run_matrx_visualizer=True,
@@ -37,10 +36,12 @@ def create_builder():
         's': MoveSouth.__name__,
         'a': MoveWest.__name__,
     }
-    builder.add_human_agent(location=[1, 1], agent=HumanAgentBrain(), name="Human",
+    brain = HumanAgentBrain()
+    builder.add_human_agent(location=[1, 1], agent=brain, name="Human",
                             key_action_map=key_action_map,
                             img_name="/static/images/agent.gif")
 
+    # Return the builder
     return builder
 
 
