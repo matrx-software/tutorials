@@ -5,9 +5,12 @@ from matrx.world_builder import RandomProperty
 from bw4t.goals import CollectionGoal
 from bw4t.objects import CollectionTarget, CollectionDropOffTile
 
+# TODO : Edited RandomProperty in the builder to handle dict values! Should be ported to MATRX
+# TODO : Edited line 548 in GridWorld
+# TODO : Edited line 6 and 15+16 in standard_objects.SquareBlock to also get a colour in its constructor.
+
+
 # Todo: These methods should be added to the WorldBuilder
-
-
 def add_collection_goal(builder, collection_locs, collection_objects, name, in_order=False,
                         collection_area_colour="#c87800", collection_area_opacity=1.0, overwrite_goals=False):
     """ Adds a goal to the world to collect objects and drop them in a specific area.
@@ -106,27 +109,32 @@ def add_collection_goal(builder, collection_locs, collection_objects, name, in_o
                          "list of length > 0 containing such lists/tuples (e.g. [[x1, y1], (x2, y2), [x3, y3]]. These "
                          "represent the locations of the area in which the objects need to be collected.")
 
-    # Check if the `collection_objects` is a list/tuple of dictionaries and if it is a RandomProperty, that is values
-    # are.
+    # Check if the `collection_objects` is a RandomProperty with values a list/tuple of potential orderuings as
+    # represented by its own list/tuple of dictionarys. In other words, if `collection_objects` is of type
+    # [[dict, ...], ...] or a version with tuples instead of lists.
     vals = collection_objects
     if isinstance(vals, RandomProperty):
         vals = vals.values
-    if not (isinstance(vals, (list, tuple)) and len(vals) > 0 and isinstance(vals[0], dict)):
+        if not (isinstance(vals, (list, tuple)) and len(vals) > 0  # check if values are a list/tuple of length > 0
+                and isinstance(vals[0], (list, tuple)) and len(vals[0]) > 0   # check if its items are a list/tuple
+                and isinstance(vals[0][0], dict)):  # check if the items in the listed orderings are of dicts
+            raise ValueError(
+                "If `collection_objects` is of type `RandomProperty`, the values it samples from should be a list of "
+                "(ordered) dictionaries. In other words; `collection_objects.values` should of type [[dict, ...], ...]."
+                "Representing 'possible_orders[some_specific_order[obj_props1, obj_props2, ...], ...]'.")
+
+    # If `collection_objects` is not a random property, it should be a list/tuple containing dicts. In other words, be
+    # of type [dict, ...] which represents a specific set of objects that need to be collected.
+    elif not (isinstance(vals, (list, tuple)) and len(vals) > 0 and isinstance(vals[0], dict)):
         raise ValueError("The `collection_objects` must be a list or tuple of length > 0 containing dictionaries that "
                          "represent an object description of the to be collected objects in terms of property-value "
-                         "pairs.")
-
-    # If it is a tuple, cast to list
-    if isinstance(collection_objects, tuple):
-        collection_objects = list(collection_objects)
-    if isinstance(collection_objects, RandomProperty) and isinstance(collection_objects.values, tuple):
-        collection_objects.values = list(collection_objects.values)
+                         "pairs. In other words, `collection_objects` should be of type [dict, ...].")
 
     # Add the `CollectionDropOffTile` at each of the given locations. These tiles will be used by the `CollectionGoal`
     # to check if all the objects are indeed collected (potentially in the required order as denoted by the order of the
     # `collect_objects` parameter).
     for l in collection_locs:
-        builder.add_object(location=l, name=name, callable_class=CollectionDropOffTile,
+        builder.add_object(location=l, name=name, callable_class=CollectionDropOffTile, collection_area_name=name,
                            is_traversable=True, is_movable=False, visualize_shape=0,
                            visualize_colour=collection_area_colour, visualize_depth=0,
                            visualize_opacity=collection_area_opacity)
@@ -136,7 +144,7 @@ def add_collection_goal(builder, collection_locs, collection_objects, name, in_o
     target_name = f"{name}_target"
     builder.add_object(location=collection_locs[0], name=target_name,
                        callable_class=CollectionTarget, collection_objects=collection_objects,
-                       collection_zone_name=target_name)
+                       collection_zone_name=name)
 
     # Create and add the collection goal
     collection_goal = CollectionGoal(name=name, target_name=target_name, in_order=in_order)

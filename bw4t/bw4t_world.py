@@ -15,9 +15,10 @@ from matrx.goals import WorldGoal
 # Some general settings
 from bw4t.builder import add_collection_goal
 from bw4t.bw4t_agent import BlockWorldAgent
+from bw4t.bw4t_objects import SignalBlock
 from bw4t.goals import CollectionGoal
 
-tick_duration = 2
+tick_duration = 1/60  # 60fps if achievable
 random_seed = 1
 verbose = False
 key_action_map = {  # For the human agents
@@ -36,14 +37,14 @@ def get_room_loc(room_nr):
     row = np.floor(room_nr / 3)
     column = room_nr % 3
 
-    # x is: +1 for the edge, +edge hallway, +room width * column nr, +1 off by one
-    room_x = int(1 + 7 + (7 * column) + 1)
+    # x is: +1 for the edge, +edge hallway, +room width * column nr
+    room_x = int(1 + 3 + (7 * column))
 
-    # y is: +1 for the edge, +hallway space * (nr row + 1 for the top hallway), +row * room height, +1 off by one
-    room_y = int(1 + 7 * (row + 1) + row * 7 + 1)
+    # y is: +1 for the edge, +hallway space * (nr row + 1 for the top hallway), +row * room height
+    room_y = int(1 + 3 * (row + 1) + row * 7)
 
     # door location is always center top
-    door_x = room_x + int(np.ceil(7 / 2))
+    door_x = room_x + int(np.floor(7 / 2))
     door_y = room_y
 
     return (room_x, room_y), (door_x, door_y)
@@ -68,22 +69,22 @@ def add_blocks(builder, room_locations, block_colours):
             # provide a `is_block` boolean as custom property so we can identify this as a collectible
             # block.
             builder.add_object_prospect(loc, name, callable_class=SquareBlock, probability=prob,
-                                        visualize_shape=0, visualize_colour=colour_property)
+                                        visualize_colour=colour_property)
 
 
 def add_drop_off_zone(builder, world_size, block_colours, nr_blocks_to_collect):
     # First we calculate the top left coordinates of the room that contains our drop off zone
-    x = int(np.ceil(world_size[0] / 2)) - int(14 / 2)  # center of the width minus half the room's width
-    y = world_size[1] - 2 - 7  # world's bottom -2 for off by one and world bound, and minus room's height
-    door_x = int(np.ceil(world_size[0] / 2))
+    x = 7
+    y = 34
+    door_x = 14
     door_y = y
 
     # Add the drop off room, with a door at its top
-    builder.add_room(top_left_location=(x, y), width=14, height=7, name="Drop_off",
+    builder.add_room(top_left_location=(x, y), width=15, height=7, name="Drop_off",
                      door_locations=[(door_x, door_y)])
 
     # Get all the locations INSIDE this room, again using a handy builder method.
-    locs = builder.get_room_locations(room_top_left=(x, y), room_width=14, room_height=7)
+    locs = builder.get_room_locations(room_top_left=(x, y), room_width=15, room_height=7)
 
     # Since we want each created world from our builder to have a different set of blocks to collect, we make  a random
     # property that samples from all possible orderings of block colours (with duplicates). There is a handy class
@@ -99,8 +100,16 @@ def add_drop_off_zone(builder, world_size, block_colours, nr_blocks_to_collect):
     # collected objects. This list will become an actual property of our invisible object, thus it can also be a
     # RandomProperty instance! This enables us to vary the required order every time a new world is created. We just
     # made this property, so we just pass it through. We also set the colour and the opacity of the 'drop zone'.
-    add_collection_goal(builder, locs, rp_order, name="Drop zone", in_order=False, collection_area_colour="#c87800",
+    drop_zone_name = "Drop zone"
+    add_collection_goal(builder, locs, rp_order, name=drop_zone_name, in_order=True, collection_area_colour="#c87800",
                         collection_area_opacity=0.5, overwrite_goals=True)
+
+    # Add our signal block that adapt itself to the then generated blocks to be collected.
+    loc = (1, 42 - 6)
+    for rank in range(6):
+        loc = (loc[0], loc[1] + 1)
+        builder.add_object(loc, name="Signal block", callable_class=SignalBlock, drop_zone_name=drop_zone_name,
+                           rank=rank)
 
 
 def add_agents(builder, block_sense_range, other_sense_range, agent_memory_decay):
@@ -153,19 +162,20 @@ def add_rooms(builder):
 def create_builder():
     # Some BW4T settings
     block_colours = ['#ff0000', '#ffffff', '#ffff00', '#0000ff', '#00ff00', '#ff00ff']
-    block_sense_range = 2  # the range with which agents detect blocks
+    block_sense_range = 10  # the range with which agents detect blocks
     other_sense_range = np.inf  # the range with which agents detect other objects (walls, doors, etc.)
-    agent_memory_decay = 5  # we want to memorize states for (seconds / tick_duration ticks) ticks
+    agent_memory_decay = (10 / tick_duration)  # we want to memorize states for (seconds / tick_duration ticks) ticks
 
     # Set numpy's random generator
     np.random.seed(random_seed)
 
     # The world size, with plenty of space for agents to move between rooms
-    world_size = (35, 42)
+    world_size = (30, 44)
 
     # Create our world builder
     builder = WorldBuilder(shape=world_size, tick_duration=tick_duration, random_seed=random_seed, run_matrx_api=True,
-                           run_matrx_visualizer=True, verbose=verbose)
+                           run_matrx_visualizer=True, verbose=verbose, visualization_bg_clr="#f0f0f0",
+                           visualization_bg_img="")
 
     # Add the world bounds (not needed, as agents cannot 'walk off' the grid, but for visual effect)
     builder.add_room(top_left_location=(0, 0), width=world_size[0], height=world_size[1], name="world_bounds")

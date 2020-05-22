@@ -1,9 +1,11 @@
 import itertools
+import warnings
 
 from matrx import WorldBuilder
 from matrx.goals import WorldGoal
 from matrx.grid_world import GridWorld
 from matrx.world_builder import RandomProperty
+from bw4t.objects import CollectionTarget, CollectionDropOffTile
 
 
 class CollectionGoal(WorldGoal):
@@ -17,7 +19,7 @@ class CollectionGoal(WorldGoal):
 
         # Set attributes we will use to speed up things and keep track of collected objects
         self.__drop_off_locs = None  # all locations where objects can be dropped off
-        self.__target_obj = None  # all (ordered) objects that need to be collected described in their properties
+        self.__target = None  # all (ordered) objects that need to be collected described in their properties
         self.__dropped_objects = {}  # a dictionary of the required dropped objects (id as key, tick as value)
         self.__progress = 0  # We also track the progress
 
@@ -25,10 +27,15 @@ class CollectionGoal(WorldGoal):
         if self.__drop_off_locs is None:  # find all drop off locations, its tile ID's and goal blocks
             self.__drop_off_locs = []
             self.__find_drop_off_locations(grid_world)
+            # Raise exception if no drop off locations were found.
+            if len(self.__drop_off_locs) == 0:
+                raise ValueError(f"The CollectionGoal {self.__area_name} could not find a "
+                                 f"{CollectionDropOffTile.__name__} with its 'collection_area_name' set to "
+                                 f"{self.__area_name}.")
 
-        if self.__target_obj is None:  # find all objects that need to be collected (potentially in order)
-            self.__target_obj = []
-            self.__find_drop_off_locations(grid_world)
+        if self.__target is None:  # find all objects that need to be collected (potentially in order)
+            self.__target = []
+            self.__find_collection_objects(grid_world)
 
         # Go all drop locations and check if the requested objects are there (potentially dropped in the right order)
         is_satisfied, progress = self.__check_completion(grid_world)
@@ -40,15 +47,24 @@ class CollectionGoal(WorldGoal):
     def __find_drop_off_locations(self, grid_world):
         all_objs = grid_world.environment_objects
         for obj_id, obj in all_objs.items():
-            if self.__area_name == obj.properties['name']:
-                loc = obj.location.copy()
+            if 'name' in obj.properties.keys() \
+                    and self.__area_name == obj.properties['name']:
+                loc = obj.location
                 self.__drop_off_locs.append(loc)
 
     def __find_collection_objects(self, grid_world):
         all_objs = grid_world.environment_objects
         for obj_id, obj in all_objs.items():
-            if self.__area_name == obj.properties['collection_zone_name']:
-                self.__target_obj = obj.properties['collection_objects'].copy()
+            if 'collection_zone_name' in obj.properties.keys() \
+                    and self.__area_name == obj.properties['collection_zone_name']\
+                    and 'collection_objects' in obj.properties and 'is_drop_off_target' in obj.properties\
+                    and obj.properties['is_drop_off_target']:
+                self.__target = obj.properties['collection_objects'].copy()
+
+        # Raise warning if no target object was found.
+        if len(self.__target) == 0:
+            warnings.warn(f"The CollectionGoal {self.__area_name} could not find a {CollectionTarget.__name__} "
+                          f"object or its 'collection_objects' property is empty.")
 
     def __check_completion(self, grid_world):
         # Get the current tick number
@@ -58,15 +74,19 @@ class CollectionGoal(WorldGoal):
         # and queries the world to locate all objects at that point through distance calculation. Note: this calculation
         # is not required, as the range is zero!).
         all_objs = grid_world.environment_objects
-        obj_ids = [obj.obj_id for loc in self.__drop_off_locs
-                   for obj in grid_world.get_objects_in_range(loc, sense_range=0)]
+        obj_ids = [obj_id for loc in self.__drop_off_locs
+                   for obj_id in grid_world.get_objects_in_range(loc, sense_range=0, object_type=None).keys()]
 
         # Go through all objects at the drop off locations. If an object was not already detected before as a
-        # required object, check if it is one of the desired objects.
+        # required object, check if it is one of the desired objects. Also, ignore all drop off tiles and targets.
         detected_objs = {}
         for obj_id in obj_ids:
             obj_props = all_objs[obj_id].properties
-            for req_props in self.__target_obj:
+            if ("is_drop_off" in obj_props.keys() and "collection_area_name" in obj_props.keys()) \
+                    or ("is_drop_off_target" in obj_props.keys() and "collection_zone_name" in obj_props.keys()
+                        and "is_invisible" in obj_props.keys()):
+                continue
+            for req_props in self.__target:
                 if req_props <= obj_props:
                     detected_objs[obj_id] = curr_tick
 
@@ -92,7 +112,7 @@ class CollectionGoal(WorldGoal):
             rank = 0
             for obj_id, tick in sorted_dropped_obj:
                 props = all_objs[obj_id]
-                req_props = self.__target_obj[rank]
+                req_props = self.__target[rank]
                 if req_props <= props:
                     rank += 1
                 else:
@@ -100,15 +120,15 @@ class CollectionGoal(WorldGoal):
                     break
 
             # Progress is the currently attained rank divided by the number of requested objects
-            progress = rank / len(self.__target_obj)
+            progress = rank / len(self.__target)
             # The goal is done as soon as the attained rank is equal to the number of requested objects
-            is_satisfied = rank == len(self.__target_obj)
+            is_satisfied = rank == len(self.__target)
 
         else:  # objects do not need to be collected in order
             # Progress the is the number of collected objects divided by the total number of requested objects
-            progress = len(self.__dropped_objects) / len(self.__target_obj)
+            progress = len(self.__dropped_objects) / len(self.__target)
             # The goal is done when the number of collected objects equal the number of requested objects
-            is_satisfied = len(self.__dropped_objects) == len(self.__target_obj)
+            is_satisfied = len(self.__dropped_objects) == len(self.__target)
 
         return is_satisfied, progress
 
@@ -121,7 +141,7 @@ class CollectionGoal(WorldGoal):
             orders = itertools.permutations(possibilities, r=length)
         else:  # with_duplicates
             orders = itertools.product(possibilities, repeat=length)
-        orders = list(orders)[0]
+        orders = list(orders)
 
         rp_orders = RandomProperty(values=orders)
 

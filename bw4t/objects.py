@@ -15,6 +15,7 @@ class CollectionTarget(EnvObject):
         - collection_zone_name: See parameter doc.
         - is_invisible: A boolean denoting that this object is invisible. This boolean has no effect in MATRX, except to
         denote that this object is not an actual visible object.
+        - is_drop_off_target: Denotes this object as containing the descriptions of the to be collected objects.
 
         The invisibility is implemented as a block with full opacity, not movable, fully traversable and always below
         other objects.
@@ -51,25 +52,28 @@ class CollectionTarget(EnvObject):
         """
         super().__init__(location=location, name=name, class_callable=CollectionTarget, customizable_properties=None,
                          is_traversable=True, is_movable=False, visualize_size=0, visualize_shape=0,
-                         visualize_colour=None, visualize_depth=np.inf, visualize_opacity=0.0,
+                         is_drop_off_target=True, visualize_colour=None, visualize_depth=None, visualize_opacity=0.0,
                          collection_objects=collection_objects, collection_zone_name=collection_zone_name,
                          is_invisible=True)
 
 
 class CollectionDropOffTile(AreaTile):
-    def __init__(self, location, name="Collection_zone", visualize_colour="#64a064",
-                 visualize_opacity=1.0, **kwargs):
+    def __init__(self, location, name="Collection_zone", collection_area_name="Collection zone",
+                 visualize_colour="#64a064", visualize_opacity=1.0, **kwargs):
         """
-        An area tile used to denote where one or more `CollectibleObject` should be dropped. It is similar to any other
-        `AreaTile` but has an additional property that says what kind of object(s) should be at this dropped of at this
-        location. This property is used by the `CollectionGoal` to monitor progress and completion.
+        An area tile used to denote where one or more objects should be dropped. It is similar to any other `AreaTile`
+        but has two additional properties that identify it as a drop off location for objects and the name of the drop
+        off. These are used by a `CollectionGoal` to help find the drop off area in all world objects.
 
         Parameters
         ----------
         location : (x, y)
             The location of this tile.
-        name : String (default is "Collection_zone")
+        name : str (default is "Collection_zone")
             The name of this tile.
+        collection_area_name: str (default is "Collection_zone")
+            The name of the collection zone this collection tile belongs to. It is used by the respective CollectionGoal
+            to identify where certain objects should be dropped.
         visualize_colour : String (default is "#64a064", a pale green)
             The colour of this tile.
         visualize_opacity : Float (default is 1.0)
@@ -85,7 +89,8 @@ class CollectionDropOffTile(AreaTile):
             The invisible object representing which object(s) need to be collected and (if needed) in which order.
         """
         super().__init__(location, name=name, visualize_colour=visualize_colour, visualize_depth=None,
-                         visualize_opacity=visualize_opacity, is_drop_off=True, **kwargs)
+                         visualize_opacity=visualize_opacity, is_drop_off=True,
+                         collection_area_name=collection_area_name, **kwargs)
 
 
 # class GhostBlock(EnvObject):
