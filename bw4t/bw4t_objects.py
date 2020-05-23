@@ -1,15 +1,18 @@
 from matrx.objects import EnvObject
 
 
+class CollectBlock(EnvObject):
+
+    def __init__(self, location, visualize_colour):
+        name = "Collect block"
+        super().__init__(location, name, class_callable=SignalBlock, is_traversable=True, is_movable=True,
+                         visualize_shape=0, visualize_colour=visualize_colour)
+
+
 class SignalBlock(EnvObject):
 
     def __init__(self, location, drop_zone_name, rank):
         """
-        An example of a simple object with a set of attributes that are always the same. In this case that it is not
-        traversable, and is visualized as a square. Otherwise it takes all default properties from an EnvObject and has
-        not other custom properties.
-        :param location: Location of the block.
-        :param name: The name of the block, if not given it is simply "Block".
         """
 
         self.__is_set = False
@@ -30,7 +33,7 @@ class SignalBlock(EnvObject):
             all_objs = grid_world.environment_objects
             for obj_id, obj in all_objs.items():
                 if 'collection_zone_name' in obj.properties.keys() and self.__drop_zone_name == obj.properties['collection_zone_name']:
-                    colour = obj.properties['collection_objects'][self.__rank]['visualize_colour']
-                    self.change_property("visualize_colour", colour)
-                    self.change_property("visualize_opacity", 1.0)
+                    colour = obj.properties['collection_objects'][self.__rank]['visualization_colour']
+                    self.change_property("visualization_colour", colour)
+                    self.change_property("visualization_opacity", 1.0)
                     self.__is_set = True

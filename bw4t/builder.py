@@ -8,6 +8,12 @@ from bw4t.objects import CollectionTarget, CollectionDropOffTile
 # TODO : Edited RandomProperty in the builder to handle dict values! Should be ported to MATRX
 # TODO : Edited line 548 in GridWorld
 # TODO : Edited line 6 and 15+16 in standard_objects.SquareBlock to also get a colour in its constructor.
+# TODO : Edited lines 175-187 in EnvObject to also check for the name "visualization_<something>" which is the name of
+#  the properties in the State/Properties dictionary, instead of solely the attribute name of "visualize_<something>.
+#  Should probably be fixed in a better way anyway...
+# TODO : Changed the constructor of the GridWorld to reset all goals it receives. Added the lines 34-40 in place of the
+#  line where the simulation goal was previously assigned. This change also included the addition of the `reset`
+#  function to SimulationGoal that resets its is_done and progress values and returns a copy of itself.
 
 
 # Todo: These methods should be added to the WorldBuilder
@@ -177,8 +183,26 @@ def add_goal(builder, world_goal, overwrite=False):
     # Add the world goals
     curr_goals = builder.world_settings["simulation_goal"]
     if not isinstance(curr_goals, (list, tuple)):
-        curr_goals = (curr_goals)
+        curr_goals = (curr_goals,)
     if not isinstance(world_goal, (list, tuple)):
-        world_goal = (world_goal)
-    goals = curr_goals + world_goal
+        world_goal = (world_goal,)
+
+    if not overwrite:
+        goals = curr_goals + world_goal
+    else:
+        goals = world_goal
+
     builder.world_settings["simulation_goal"] = goals
+
+
+# TODO : This method should be a utility method
+def _flatten_dict(dict_):
+    new_dict = {}
+    for k, v in dict_.items():
+        if isinstance(v, dict):
+            sub_dict_ = {f"{k}_{k2}": v2 for k2, v2 in v.items()}
+            new_dict = {**new_dict, **sub_dict_}
+        else:
+            new_dict[k] = v
+
+    return new_dict

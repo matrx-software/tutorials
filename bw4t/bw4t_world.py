@@ -15,7 +15,7 @@ from matrx.goals import WorldGoal
 # Some general settings
 from bw4t.builder import add_collection_goal
 from bw4t.bw4t_agent import BlockWorldAgent
-from bw4t.bw4t_objects import SignalBlock
+from bw4t.bw4t_objects import SignalBlock, CollectBlock
 from bw4t.goals import CollectionGoal
 
 tick_duration = 1/60  # 60fps if achievable
@@ -68,7 +68,7 @@ def add_blocks(builder, room_locations, block_colours):
             # builder will use to create the object. In addition to setting MATRX properties, we also
             # provide a `is_block` boolean as custom property so we can identify this as a collectible
             # block.
-            builder.add_object_prospect(loc, name, callable_class=SquareBlock, probability=prob,
+            builder.add_object_prospect(loc, name, callable_class=CollectBlock, probability=prob,
                                         visualize_colour=colour_property)
 
 
@@ -89,7 +89,7 @@ def add_drop_off_zone(builder, world_size, block_colours, nr_blocks_to_collect):
     # Since we want each created world from our builder to have a different set of blocks to collect, we make  a random
     # property that samples from all possible orderings of block colours (with duplicates). There is a handy class
     # method in `CollectionGoal` that does this for us!
-    possibilities = [{"visualize_colour": c} for c in block_colours]
+    possibilities = [{"visualization_colour": c} for c in block_colours]
     rp_order = CollectionGoal.get_random_order_property(possibilities, length=nr_blocks_to_collect,
                                                         with_duplicates=True)
 
@@ -105,11 +105,11 @@ def add_drop_off_zone(builder, world_size, block_colours, nr_blocks_to_collect):
                         collection_area_opacity=0.5, overwrite_goals=True)
 
     # Add our signal block that adapt itself to the then generated blocks to be collected.
-    loc = (1, 42 - 6)
-    for rank in range(6):
-        loc = (loc[0], loc[1] + 1)
+    loc = (1, world_size[1] - 1 - nr_blocks_to_collect)
+    for rank in range(nr_blocks_to_collect):
         builder.add_object(loc, name="Signal block", callable_class=SignalBlock, drop_zone_name=drop_zone_name,
                            rank=rank)
+        loc = (loc[0], loc[1] + 1)
 
 
 def add_agents(builder, block_sense_range, other_sense_range, agent_memory_decay):
@@ -117,7 +117,7 @@ def add_agents(builder, block_sense_range, other_sense_range, agent_memory_decay
     # Here, we define that the agent cannot see other agent's their bodies, they can see square blocks with their own
     # range and see all other objects (doors, walls, etc.) with another range.
     sense_capability = SenseCapability({AgentBody: 0,
-                                        SquareBlock: block_sense_range,
+                                        CollectBlock: block_sense_range,
                                         None: other_sense_range})
 
     # Now we add our agents as part of the same team
@@ -187,7 +187,7 @@ def create_builder():
     add_blocks(builder, room_locations, block_colours)
 
     # Create the drop-off zones, this includes generating the random colour/shape combinations to collect.
-    add_drop_off_zone(builder, world_size, block_colours, nr_blocks_to_collect=6)
+    add_drop_off_zone(builder, world_size, block_colours, nr_blocks_to_collect=2)
 
     # Add the agents and human agents to the top row of the world
     add_agents(builder, block_sense_range, other_sense_range, agent_memory_decay)

@@ -21,7 +21,7 @@ class CollectionGoal(WorldGoal):
         self.__drop_off_locs = None  # all locations where objects can be dropped off
         self.__target = None  # all (ordered) objects that need to be collected described in their properties
         self.__dropped_objects = {}  # a dictionary of the required dropped objects (id as key, tick as value)
-        self.__progress = 0  # We also track the progress
+        self.__attained_rank = 0  # The maximum attained rank of the correctly collected objects (only used if in_order)
 
     def goal_reached(self, grid_world: GridWorld):
         if self.__drop_off_locs is None:  # find all drop off locations, its tile ID's and goal blocks
@@ -38,9 +38,8 @@ class CollectionGoal(WorldGoal):
             self.__find_collection_objects(grid_world)
 
         # Go all drop locations and check if the requested objects are there (potentially dropped in the right order)
-        is_satisfied, progress = self.__check_completion(grid_world)
+        is_satisfied = self.__check_completion(grid_world)
         self.is_done = is_satisfied
-        self.__progress = progress
 
         return is_satisfied
 
@@ -67,33 +66,45 @@ class CollectionGoal(WorldGoal):
                           f"object or its 'collection_objects' property is empty.")
 
     def __check_completion(self, grid_world):
+        # If we were already done before, we return the past values
+        if self.is_done:
+            return self.is_done
+
         # Get the current tick number
         curr_tick = grid_world.current_nr_ticks
 
         # Retrieve all objects and the drop locations (this is the most performance heavy; it loops over all drop locs
         # and queries the world to locate all objects at that point through distance calculation. Note: this calculation
         # is not required, as the range is zero!).
-        all_objs = grid_world.environment_objects
         obj_ids = [obj_id for loc in self.__drop_off_locs
                    for obj_id in grid_world.get_objects_in_range(loc, sense_range=0, object_type=None).keys()]
+
+        # Get all world objects and agents
+        all_objs = grid_world.environment_objects
+        all_agents = grid_world.registered_agents
+        all_ = {**all_objs, **all_agents}
 
         # Go through all objects at the drop off locations. If an object was not already detected before as a
         # required object, check if it is one of the desired objects. Also, ignore all drop off tiles and targets.
         detected_objs = {}
         for obj_id in obj_ids:
-            obj_props = all_objs[obj_id].properties
+            obj_props = all_[obj_id].properties
+            # Check if the object is either a collection area tile or a collection target object, if so skip it
             if ("is_drop_off" in obj_props.keys() and "collection_area_name" in obj_props.keys()) \
                     or ("is_drop_off_target" in obj_props.keys() and "collection_zone_name" in obj_props.keys()
                         and "is_invisible" in obj_props.keys()):
                 continue
             for req_props in self.__target:
-                if req_props <= obj_props:
+                obj_props = CollectionGoal.__flatten_dict(obj_props)
+                if req_props.items() <= obj_props.items():
                     detected_objs[obj_id] = curr_tick
 
         # Now compare the detected objects with the previous detected objects to see if any new objects were detected
         # and thus should be added to the dropped objects
+        is_updated = False
         for obj_id in detected_objs.keys():
             if obj_id not in self.__dropped_objects.keys():
+                is_updated = True
                 self.__dropped_objects[obj_id] = detected_objs[obj_id]
 
         # Check if any objects detected previously are now not detected anymore, as such they need to be removed.
@@ -102,35 +113,59 @@ class CollectionGoal(WorldGoal):
             if obj_id not in detected_objs.keys():
                 removed.append(obj_id)
         for obj_id in removed:
+            is_updated = True
             self.__dropped_objects.pop(obj_id, None)
 
-        # If required, check if the dropped objects are dropped in order by tracking the rank up which the dropped
-        # objects satisfy the requested order.
-        if self.__in_order:
+        # If required (and needed), check if the dropped objects are dropped in order by tracking the rank up which the
+        # dropped objects satisfy the requested order.
+        if self.__in_order and is_updated:
             # Sort the dropped objects based on the tick they were detected (in ascending order)
             sorted_dropped_obj = sorted(self.__dropped_objects.items(), key=lambda x: x[1], reverse=False)
             rank = 0
             for obj_id, tick in sorted_dropped_obj:
-                props = all_objs[obj_id]
+                props = all_[obj_id].properties
+                props = CollectionGoal.__flatten_dict(props)
                 req_props = self.__target[rank]
-                if req_props <= props:
+                if req_props.items() <= props.items():
                     rank += 1
                 else:
                     # as soon as the next object is not the one we expect, we stop the search at this attained rank.
                     break
 
-            # Progress is the currently attained rank divided by the number of requested objects
-            progress = rank / len(self.__target)
             # The goal is done as soon as the attained rank is equal to the number of requested objects
             is_satisfied = rank == len(self.__target)
+            # Store the attained rank, used to measure the progress
+            self.__attained_rank = rank
 
-        else:  # objects do not need to be collected in order
-            # Progress the is the number of collected objects divided by the total number of requested objects
-            progress = len(self.__dropped_objects) / len(self.__target)
+        # objects do not need to be collected in order and new ones were dropped
+        elif is_updated:
             # The goal is done when the number of collected objects equal the number of requested objects
             is_satisfied = len(self.__dropped_objects) == len(self.__target)
 
-        return is_satisfied, progress
+        # no new objects detected, so just return the past values
+        else:
+            is_satisfied = self.is_done
+
+        return is_satisfied
+
+    def get_progress(self, grid_world):
+        # If we are done, just return 1.0
+        if self.is_done:
+            return 1.0
+
+        # Check if the order matters, if so calculated the progress based on the maximum attained rank of correct
+        # ordered collected objects.
+        if self.__in_order:
+            # Progress is the currently attained rank divided by the number of requested objects
+            progress = self.__attained_rank / len(self.__target)
+
+        # If the order does not matter, just calculate the progress as the number of correctly collected/dropped
+        # objects.
+        else:
+            # Progress the is the number of collected objects divided by the total number of requested objects
+            progress = len(self.__dropped_objects) / len(self.__target)
+
+        return progress
 
     @classmethod
     def get_random_order_property(cls, possibilities, length=None, with_duplicates=False):
