@@ -14,6 +14,10 @@ from bw4t.objects import CollectionTarget, CollectionDropOffTile
 # TODO : Changed the constructor of the GridWorld to reset all goals it receives. Added the lines 34-40 in place of the
 #  line where the simulation goal was previously assigned. This change also included the addition of the `reset`
 #  function to SimulationGoal that resets its is_done and progress values and returns a copy of itself.
+# TODO : Added a room_name property to all walls, tiles and doors created with the builder.add_room method. Changed for
+#  this the lines 908-917, 921-922 and 934-937 in WorldBuilder. Also allowed Door and Wall to have custom properties.
+#  Changed for this line 21-22+50-53 and 86+94-96 in standard_objects.py (the constructors and super calls). This change
+#  allows for the easy search for rooms and their contents with the State object.
 
 
 # Todo: These methods should be added to the WorldBuilder
